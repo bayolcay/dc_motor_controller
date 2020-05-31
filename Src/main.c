@@ -104,7 +104,6 @@ int main(void)
   MX_TIM2_Init();
   MX_USB_DEVICE_Init();
   MX_IWDG_Init();
-
   /* USER CODE BEGIN 2 */
   InitUserVariables();
   Alpha_State_Ptr = *Reverse;
@@ -292,7 +291,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 2;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 16000;
+  htim2.Init.Period = 1600;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -328,7 +327,7 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM2_Init 2 */
-  TIM2PERIOD=htim2.Init.Period = 1600;
+  TIM2PERIOD=htim2.Init.Period;
   /* USER CODE END TIM2_Init 2 */
   HAL_TIM_MspPostInit(&htim2);
 
@@ -446,7 +445,7 @@ void Idle_Works(void) {
 
 			for (int i = 0; i < NUMBER_OF_PARAMETERS; i++) {
 				strcat(TransmitData, StrArr[i]);
-				sprintf(str, "%d", ParamArray[i]);
+				sprintf(str, "%d", UserParamArray[i]);
 				strcat(str, CR);
 				strcat(TransmitData, str);
 			}
@@ -474,9 +473,9 @@ void Idle_Works(void) {
 			}
 
 			if ( ((Rcv <= 100) && ParametreCount<2) || ((Rcv <= 5000) && ParametreCount>=2 ))			 {
-				ScaleArray[ParametreCount] = Rcv;
+				UserParamArray[ParametreCount] = Rcv;
 
-				sprintf(str, "%d", ScaleArray[ParametreCount]);
+				sprintf(str, "%d", UserParamArray[ParametreCount]);
 				strcat(TransmitData, str);
 
 				ParametreCount++;
@@ -513,18 +512,15 @@ void Idle_Works(void) {
 				for (int i = 0; i < dataSize; i++) {
 					ReceivedData[i] = 0;
 				}
-				ParamArray[0] = TIM2PERIOD / 100 * ScaleArray[0];
-				ParamArray[1] = TIM2PERIOD / 100 * ScaleArray[1];
-				ParamArray[2] = ScaleArray[2];				// ms
-				ParamArray[3] = ScaleArray[3];				// ms
-
-				DutyMAX = ParamArray[0];
-				DutyMAX_Reverse = ParamArray[1];
+				ParamArray[0] = (uint16_t)((float) TIM2PERIOD * (float) UserParamArray[0]*0.01f);
+				ParamArray[1] = (uint16_t)((float) TIM2PERIOD * (float) UserParamArray[1]*0.01f);
+				ParamArray[2] = UserParamArray[2];				// ms
+				ParamArray[3] = UserParamArray[3];				// ms
 
 				strcat(TransmitData, CR);
 				strcat(TransmitData, StrArr[NUMBER_OF_STRING - 1]);
 				CDC_Transmit_FS((uint8_t *) TransmitData, strlen(TransmitData));
-				SaveandExit(ParamArray);
+				SaveandExit(UserParamArray);
 			}
 			PrintMode = Intro;
 			check = 0;
@@ -536,6 +532,7 @@ void Forward (void){
 
 	static bool ForwardFlag = 0;
 	static uint16_t Forwardimeout = 100; /*Default timeout*/
+	static uint8_t SoftStartCounter=0;
 
 	/* State entry works*/
 	if (ForwardFlag) {
@@ -543,12 +540,17 @@ void Forward (void){
 		StateSandClock = 0;
 		Duty = 0;
 		Forwardimeout= 100+(uint16_t) ((float) ParamArray[2] * (float) Pot1_ConvAvg/4096.0f);
+		SoftStartCounter=32;
 	}
 
 	if (_10msFlagScan)	{
 		StateSandClock += 10;
-		if (Duty < (DutyMAX-(DutyMAX>>5U))) Duty=Duty+(DutyMAX>>5U);
-		else Duty=DutyMAX;
+
+		if (SoftStartCounter>0 && ParamArray[0]>SoftStartDuration)	{
+			SoftStartCounter--;
+			Duty=Duty+(ParamArray[0]>>SoftStartStep);
+		}
+		else Duty=ParamArray[0];
 	}
 
 	if (StateSandClock > Forwardimeout) {
@@ -599,18 +601,25 @@ void Reverse (void){
 
 	static bool ReverseFlag = 0;
 	static uint16_t ReverseTimeout = 100; /*Default timeout*/
+	static uint8_t SoftStartCounter=0;
 
 	/* State entry works*/
 	if (ReverseFlag) {
 		ReverseFlag = FALSE;
 		StateSandClock = 0;
 		ReverseTimeout = 3000; /* ms, Can be adjusted by UCB Communication*/
+		SoftStartCounter=SoftStartDuration;
+		Duty=0;
 	}
 
 	if (_10msFlagScan)	{
 		StateSandClock += 10;
-		if (Duty < (DutyMAX-(DutyMAX>>5U))) Duty=Duty+(DutyMAX>>5U);
-		else Duty=DutyMAX_Reverse;
+
+		if (SoftStartCounter>0 && ParamArray[0]>SoftStartDuration)	{
+			SoftStartCounter--;
+			Duty=Duty+(ParamArray[1]>>SoftStartStep);
+		}
+		else Duty=ParamArray[1];
 	}
 
 	if (StateSandClock > ReverseTimeout || 		HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_0)==GPIO_PIN_RESET ) {
@@ -709,8 +718,8 @@ void SysTickCountersUpdate(void) {
 
 void SaveandExit (uint16_t * Parameters)		{
 
-	 HAL_StatusTypeDef WriteStatus;
-	 static uint32_t pageError, xx;
+//	 HAL_StatusTypeDef WriteStatus;
+	 static uint32_t pageError, xx, DelayDuration=1000;
 
 	 static FLASH_EraseInitTypeDef eraseInit = {
 	    FLASH_TYPEERASE_PAGES,  /*!< Pages erase only (Mass erase is disabled)*/
@@ -727,19 +736,23 @@ void SaveandExit (uint16_t * Parameters)		{
 	HAL_FLASHEx_Erase(&eraseInit, &pageError);
 
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)userConfig, 0xABCD);
-	xx=64000;
+	xx=DelayDuration;
 	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[1], Parameters[0]);
-	xx=64000;
+	xx=DelayDuration;
 	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[2], Parameters[1]);
+	xx=DelayDuration;
+	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[3], Parameters[2]);
+	xx=DelayDuration;
+	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[4], Parameters[3]);
+	xx=DelayDuration;
+	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[5], 0xABCD);			// yazar yazmaz lock deyince bir problem var sanýrým
 
 
-	if (WriteStatus==HAL_OK)
-		__NOP();
 	HAL_FLASH_Lock();
 }
 

@@ -54,11 +54,14 @@ extern uint32_t time;
 #define NUMBER_OF_STRING (2*NUMBER_OF_PARAMETERS+3)
 #define MAX_STRING_SIZE 20
 
+#define SoftStartDuration 32U
+#define SoftStartStep 5U
+
 
 uint16_t TIM2PERIOD;
 
 uint16_t ParamArray[NUMBER_OF_PARAMETERS];
-uint16_t ScaleArray[NUMBER_OF_PARAMETERS];
+uint16_t UserParamArray[NUMBER_OF_PARAMETERS];
 
 uint16_t Duty;
 uint16_t DutyMAX;
