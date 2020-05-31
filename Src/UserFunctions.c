@@ -35,8 +35,8 @@ void InitUserVariables (void)
 	StrArr[2] = "Max Ýleri Hareket Süresi-(ms):";
 	StrArr[3] = "Max Geride Bekleme Süresi(ms):";
 
-	StrArr[4] = "YENÝ ileri yonde gerilim %:";	//
-	StrArr[5] = "YENÝ geri yonde gerilim %:";
+	StrArr[4] = "YENÝ Ileri Yonde Gerilim %:";	//
+	StrArr[5] = "YENÝ Geri Yonde Gerilim %:";
 	StrArr[6] = "YENÝ Max Ýleri Hareket Süresi (0-5000ms):";
 	StrArr[7] = "YENÝ Max Geride Bekleme Süresi (0-5000ms):";
 	StrArr[8] = "Lütfen Tanýmlý Aralýkta Bir Deger Giriniz! ";	//

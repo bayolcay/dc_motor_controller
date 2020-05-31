@@ -62,7 +62,8 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 20K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 64K
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 62K
+DATA (RWX) 		: ORIGIN = 0x0800F800, LENGTH = 1k
 }
 
 /* Define output sections */
@@ -172,7 +173,13 @@ SECTIONS
     . = . + _Min_Stack_Size;
     . = ALIGN(4);
   } >RAM
-
+/* Read microcontroller - Allocating memory in Flash for user data (STM32F4 HAL) - Stack Overflow*/
+	.user_data :
+	{
+	. = ALIGN(4);
+	*(.user_data)
+	. = ALIGN(4);
+	} > DATA
   
 
   /* Remove information from the standard libraries */

@@ -74,8 +74,9 @@ uint16_t Pot2_ConvAvg;
 //const char StrArr[NUMBER_OF_STRING][MAX_STRING_SIZE];
 const char* StrArr[NUMBER_OF_STRING];
 
+/* Read microcontroller - Allocating memory in Flash for user data (STM32F4 HAL) - Stack Overflow*/
 
-#define FLASH_PAGE_63 (uint32_t) 0x0800FC00
+#define FLASH_PAGE_62 (uint32_t) 0x0800F800
 
 //static enum	DriveState { geri_bekleme, ileri, ileri_bekleme, geri } DriveState;
 

@@ -104,14 +104,15 @@ int main(void)
   MX_TIM2_Init();
   MX_USB_DEVICE_Init();
   MX_IWDG_Init();
+
   /* USER CODE BEGIN 2 */
-  Alpha_State_Ptr = *Wait_Reverse;
+  InitUserVariables();
+  Alpha_State_Ptr = *Reverse;
 
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*) ADC_Values, 2);
   __HAL_TIM_ENABLE_IT(&htim2, TIM_IT_UPDATE );
   HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2,TIM_CHANNEL_2);
-
 
 
   /* USER CODE END 2 */
@@ -391,8 +392,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 	if (htim->Instance == TIM2) {
 
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_14);
-
 		if ((tiktok % 2)) {
 			htim->Instance->CCR1 = (htim->Init.Period + 5); /* overall period 1600 0x640*/
 			htim->Instance->CCR2 = Duty;
@@ -408,7 +407,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void Idle_Works(void) {
 
-	static uint8_t ADCSAvgCounter = 0;
+	static uint8_t ADCSAvgCounter = 0, EnableMotor=0;
 	static const char CR[] = { 0x0A };
 	static enum PrintMode {
 		Intro, Giris, Kayit
@@ -427,11 +426,15 @@ void Idle_Works(void) {
 		ADCSAvgCounter = 0;
 		Pot1_ConvAvg = POT1_ConvSum >> 4;
 		Pot2_ConvAvg = POT2_ConvSum >> 4;
-		Pot1_ConvAvg=Pot1_ConvAvg+100;
-		Pot2_ConvAvg=Pot2_ConvAvg+100;
-
+		Pot1_ConvAvg=Pot1_ConvAvg;
+		Pot2_ConvAvg=Pot2_ConvAvg;
 		POT1_ConvSum = 0;
 		POT2_ConvSum = 0;
+		if (EnableMotor==0)	{
+			EnableMotor=1;
+	 	    HAL_GPIO_WritePin(GPIOC,GPIO_PIN_14, GPIO_PIN_SET);
+		}
+
 	}
 
 	if (check == 1) {
@@ -442,7 +445,6 @@ void Idle_Works(void) {
 			}
 
 			for (int i = 0; i < NUMBER_OF_PARAMETERS; i++) {
-				//	strcpy(Dummy, StrArr[i]);
 				strcat(TransmitData, StrArr[i]);
 				sprintf(str, "%d", ParamArray[i]);
 				strcat(str, CR);
@@ -534,14 +536,13 @@ void Forward (void){
 
 	static bool ForwardFlag = 0;
 	static uint16_t Forwardimeout = 100; /*Default timeout*/
-	HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_15);	//Enable Driver Chip
 
 	/* State entry works*/
 	if (ForwardFlag) {
 		ForwardFlag = FALSE;
 		StateSandClock = 0;
 		Duty = 0;
-		Forwardimeout= (uint16_t) ((float) ParamArray[2] * (float) Pot1_ConvAvg/4096.0f);
+		Forwardimeout= 100+(uint16_t) ((float) ParamArray[2] * (float) Pot1_ConvAvg/4096.0f);
 	}
 
 	if (_10msFlagScan)	{
@@ -554,7 +555,6 @@ void Forward (void){
 
 		HAL_TIM_PWM_Stop(&htim2,TIM_CHANNEL_1);
 		HAL_TIM_PWM_Stop(&htim2,TIM_CHANNEL_2);
-		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_14, GPIO_PIN_RESET);	//Enable Driver Chip
 		Alpha_State_Ptr=*Wait_Forward;
 		ForwardFlag = TRUE;
 		StateSandClock=0;
@@ -572,7 +572,7 @@ void Wait_Reverse (void){
 	if (WaitReverseFlag) {
 		WaitReverseFlag = FALSE;
 		StateSandClock = 0;
-		Wait_ReverseTimeout= (uint16_t) ((float) ParamArray[3] * (float) Pot2_ConvAvg/4096.0f);
+		Wait_ReverseTimeout= 100+(uint16_t) ((float) ParamArray[3] * (float) Pot2_ConvAvg/4096.0f);
 	}
 
 	if (_10msFlagScan)	StateSandClock += 10;
@@ -589,7 +589,6 @@ void Wait_Reverse (void){
 		htim2.Instance->CCMR1 = tmpccmrx;
 		HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 		HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-		HAL_GPIO_WritePin(GPIOC,GPIO_PIN_14, GPIO_PIN_SET);
 		Alpha_State_Ptr = *Forward; /*next state*/
 		StateSandClock=0;
 		WaitReverseFlag=TRUE;
@@ -709,13 +708,38 @@ void SysTickCountersUpdate(void) {
 }
 
 void SaveandExit (uint16_t * Parameters)		{
+
+	 HAL_StatusTypeDef WriteStatus;
+	 static uint32_t pageError, xx;
+
+	 static FLASH_EraseInitTypeDef eraseInit = {
+	    FLASH_TYPEERASE_PAGES,  /*!< Pages erase only (Mass erase is disabled)*/
+	    0,                      /*!< Select banks to erase when Mass erase is enabled.*/
+		FLASH_PAGE_62,   /*!< Initial FLASH page address to erase when mass erase is disabled
+	                                 This parameter must be a number between Min_Data = 0x08000000 and Max_Data = FLASH_BANKx_END
+	                                 (x = 1 or 2 depending on devices)*/
+	    1                       /*!< Number of pagess to be erased.
+	                                 This parameter must be a value between Min_Data = 1 and Max_Data = (max number of pages - value of initial page)*/
+	};
+
 	HAL_FLASH_Unlock();
-	FLASH_PageErase(FLASH_PAGE_63);
+	//FLASH_PageErase()FLASH_PAGE_62;
+	HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)userConfig, 0xABCD);
+	xx=64000;
+	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[1], Parameters[0]);
+	xx=64000;
+	while(xx>0) { xx--; }
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[2], Parameters[1]);
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[3], Parameters[2]);
 	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[4], Parameters[3]);
+	HAL_FLASH_Program( FLASH_TYPEPROGRAM_HALFWORD, (uint32_t)&userConfig[5], 0xABCD);			// yazar yazmaz lock deyince bir problem var sanýrým
+
+
+	if (WriteStatus==HAL_OK)
+		__NOP();
 	HAL_FLASH_Lock();
 }
 
